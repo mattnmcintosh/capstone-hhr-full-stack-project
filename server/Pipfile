@@ -10,6 +10,9 @@ flask-cors = "*"
 python-dotenv = "*"
 psycopg = "*"
 psycopg2-binary = "*"
+icalendar = "*"
+flask-bcrypt = "*"
+flask-jwt-extended = "*"
 
 [dev-packages]
 
