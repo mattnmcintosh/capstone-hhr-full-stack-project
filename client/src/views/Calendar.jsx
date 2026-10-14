@@ -1,33 +1,42 @@
 import { useState, useEffect } from 'react';
-import { Typography, Paper, Box, TextField, Button, List, ListItem, ListItemText, IconButton, Divider } from '@mui/material';
+import { Typography, Paper, Box, TextField, Button, Divider, Alert, Chip, IconButton, List, ListItem, ListItemText } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DownloadIcon from '@mui/icons-material/Download';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import interactionPlugin from '@fullcalendar/interaction';
 import { apiFetch } from '../utils/api';
 
 export default function Calendar() {
   const [events, setEvents] = useState([]);
+  const [items, setItems] = useState([]);
   const [title, setTitle] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [description, setDescription] = useState('');
   const [editingEventId, setEditingEventId] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const icsUrl = `http://localhost:5555/api/calendar.ics?token=${localStorage.getItem('jwt_token')}`
 
-  const sortEventsByStartDate = (eventsArray) => {
-    return [...eventsArray].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-  };
-
   // Fetch events on mount
 useEffect(() => {
-    apiFetch('/events')
-      .then((data) => setEvents(sortEventsByStartDate(data)))
-      .catch((err) => console.error("Error fetching events:", err));
+    Promise.all([
+      apiFetch('/events'),
+      apiFetch('/items')
+    ])
+      .then(([eventsData, itemsData]) => {
+        setEvents(eventsData);
+        setItems(itemsData);
+      })
+      .catch((err) => console.error("Error fetching calendar data:", err));
   }, []);
 
-  // Create Event Form Submission
+  // Handle Create or Update submission
   const handleSubmitEvent = async (e) => {
     e.preventDefault();
     if (!title || !startTime || !endTime) return;
@@ -46,7 +55,7 @@ useEffect(() => {
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
-        setEvents((prev) => sortEventsByStartDate(prev.map(ev => ev.id === editingEventId ? updatedEvent : ev)));
+        setEvents((prev) => prev.map(ev => ev.id === editingEventId ? updatedEvent : ev));
         setEditingEventId(null);
       } else {
         // CREATE (POST)
@@ -54,7 +63,7 @@ useEffect(() => {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        setEvents((prev) => sortEventsByStartDate([...prev, newEvent]));
+        setEvents((prev) => [...prev, newEvent]);
       }
 
       // Reset form
@@ -67,13 +76,32 @@ useEffect(() => {
     }
   };
 
-  const handleStartEdit = (event) => {
-    setEditingEventId(event.id);
-    setTitle(event.title);
-    // Format ISO string to match HTML datetime-local input (YYYY-MM-DDThh:mm)
-    setStartTime(event.start_time ? event.start_time.slice(0, 16) : '');
-    setEndTime(event.end_time ? event.end_time.slice(0, 16) : '');
-    setDescription(event.description || '');
+  // Populate form fields when an event is clicked on the grid or list
+  const handleStartEdit = (eventObj) => {
+    // Note: If triggered from FullCalendar's eventClick, the ID is in eventObj.id (e.g., "event-5")
+    // If triggered from the list below, it's just the numeric id.
+    let targetId = eventObj.id;
+
+    // If coming from FullCalendar click handler format
+    if (typeof targetId === 'string' && targetId.startsWith('task-')) {
+      alert("Checklist item deadlines must be edited from the Queue tab.");
+      return;
+    }
+    if (typeof targetId === 'string' && targetId.startsWith('event-')) {
+      targetId = parseInt(targetId.replace('event-', ''), 10);
+    }
+
+    const found = events.find(ev => ev.id === targetId);
+    if (!found) return;
+
+    setEditingEventId(found.id);
+    setTitle(found.title);
+    setStartTime(found.start_time ? found.start_time.slice(0, 16) : '');
+    setEndTime(found.end_time ? found.end_time.slice(0, 16) : '');
+    setDescription(found.description || '');
+
+    // Scroll smoothly down to the form
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
@@ -88,27 +116,83 @@ useEffect(() => {
   const handleDeleteEvent = async (eventId) => {
     try {
       await apiFetch(`/events/${eventId}`, { method: 'DELETE' });
-      setEvents((prev) => sortEventsByStartDate(prev.filter(e => e.id !== eventId)));
+      setEvents((prev) => prev.filter(e => e.id !== eventId));
       if (editingEventId === eventId) handleCancelEdit();
     } catch (err) {
       console.error("Failed to delete event:", err);
     }
   };
 
+  const copyIcsLink = () => {
+    navigator.clipboard.writeText(icsUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
+  };
+
+  // Map custom user events
+  const formattedEvents = events.map(ev => ({
+    id: `event-${ev.id}`,
+    title: ev.title,
+    start: ev.start_time,
+    end: ev.end_time,
+    backgroundColor: '#3498db',
+    borderColor: '#2980b9',
+    extendedProps: { type: 'custom', description: ev.description }
+  }));
+
+  // Map incomplete checklist item due dates
+  const formattedDeadlines = items
+    .filter(item => item.due_date && !item.is_completed)
+    .map(item => {
+      let color = '#f39c12';
+      if (item.priority_score > 50) color = '#e74c3c';
+      else if (item.priority_score < 20) color = '#95a5a6';
+
+      return {
+        id: `task-${item.id}`,
+        title: `⚡ [Deadline] ${item.title}`,
+        start: item.due_date,
+        allDay: true,
+        backgroundColor: color,
+        borderColor: color,
+        extendedProps: { type: 'deadline', priorityScore: item.priority_score }
+      };
+    });
+
+  const allCalendarEvents = [...formattedEvents, ...formattedDeadlines];
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <CalendarMonthIcon sx={{ mr: 1.5, color: '#2c3e50', fontSize: 32 }} />
         <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-          Calendar & .ics File
+          Visual Schedule & .ics Feed Sync
         </Typography>
       </Box>
 
+      {/* Subscription Feed Box */}
       <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 2, bgcolor: '#fff3cd', borderLeft: '5px solid #f39c12' }}>
         <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-          Native Calendar ICS Files
+          Native Calendar Subscription Feed
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Subscribe to your live feed URL in Apple Calendar, Google Calendar, or Outlook to sync these visual blocks.
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField 
+            size="small" 
+            value={icsUrl} 
+            InputProps={{ readOnly: true }} 
+            sx={{ flexGrow: 1, bgcolor: '#fff' }} 
+          />
+          <Button 
+            variant="contained" 
+            startIcon={<ContentCopyIcon />} 
+            onClick={copyIcsLink}
+            sx={{ bgcolor: '#2c3e50' }}
+          >
+            Copy Feed URL
+          </Button>
           <Button 
             variant="outlined" 
             startIcon={<DownloadIcon />} 
@@ -118,10 +202,42 @@ useEffect(() => {
             Download .ics File
           </Button>
         </Box>
+        {copied && <Alert severity="success" sx={{ mt: 2 }}>Feed URL copied to clipboard!</Alert>}
+      </Paper>
+
+      {/* FullCalendar Visual Grid with clickHandler */}
+      <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 2, bgcolor: '#ffffff' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Schedule & Deadlines Grid (Click any event to edit)</Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Chip size="small" sx={{ bgcolor: '#3498db', color: '#fff' }} label="Custom Event" />
+            <Chip size="small" sx={{ bgcolor: '#e74c3c', color: '#fff' }} label="High Priority Deadline" />
+            <Chip size="small" sx={{ bgcolor: '#f39c12', color: '#fff' }} label="Pending Deadline" />
+          </Box>
+        </Box>
+        <Divider sx={{ mb: 3 }} />
+
+        <FullCalendar
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          initialView="dayGridMonth"
+          headerToolbar={{
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+          }}
+          events={allCalendarEvents}
+          height="auto"
+          eventClick={(info) => handleStartEdit(info.event)} // <--- CLICK TO EDIT TRIGGER
+          eventTimeFormat={{
+            hour: '2-digit',
+            minute: '2-digit',
+            meridiem: 'short'
+          }}
+        />
       </Paper>
 
       {/* Create / Edit Event Form */}
-      <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+      <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
         <Typography variant="h6" gutterBottom>
           {editingEventId ? 'Edit Calendar Block' : 'Schedule Calendar Block'}
         </Typography>
@@ -163,55 +279,27 @@ useEffect(() => {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             <Button variant="contained" type="submit" sx={{ bgcolor: editingEventId ? '#3498db' : '#e74c3c' }}>
               {editingEventId ? 'Update Block' : 'Add Calendar Block'}
             </Button>
             {editingEventId && (
-              <Button variant="outlined" color="inherit" onClick={handleCancelEdit}>
-                Cancel
-              </Button>
+              <>
+                <Button 
+                  variant="outlined" 
+                  color="error" 
+                  startIcon={<DeleteIcon />}
+                  onClick={() => handleDeleteEvent(editingEventId)}
+                >
+                  Delete Block
+                </Button>
+                <Button variant="outlined" color="inherit" onClick={handleCancelEdit}>
+                  Cancel
+                </Button>
+              </>
             )}
           </Box>
         </Box>
-      </Paper>
-
-      {/* Event List Display */}
-      <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-          Active Calendar Blocks ({events.length})
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
-
-        <List disablePadding>
-          {events.map((event) => (
-            <ListItem 
-              key={event.id}
-              sx={{ 
-                bgcolor: editingEventId === event.id ? '#e3f2fd' : '#fafafa', 
-                mb: 1.5, 
-                borderRadius: 1, 
-                borderLeft: '5px solid #3498db' 
-              }}
-              secondaryAction={
-                <Box>
-                  <IconButton edge="end" onClick={() => handleStartEdit(event)} sx={{ mr: 1 }}>
-                    <EditIcon color="primary" />
-                  </IconButton>
-                  <IconButton edge="end" onClick={() => handleDeleteEvent(event.id)}>
-                    <DeleteIcon color="error" />
-                  </IconButton>
-                </Box>
-              }
-            >
-              <ListItemText 
-                primary={event.title}
-                secondary={`From: ${new Date(event.start_time).toLocaleString()} | To: ${new Date(event.end_time).toLocaleString()}`}
-                primaryTypographyProps={{ sx: { fontWeight: 'medium' } }}
-              />
-            </ListItem>
-          ))}
-        </List>
       </Paper>
     </Box>
   );

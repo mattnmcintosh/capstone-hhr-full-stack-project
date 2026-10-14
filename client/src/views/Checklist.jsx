@@ -241,8 +241,8 @@ export default function Checklist() {
                       primary={item.title} 
                       secondary={
                         item.due_date 
-                          ? `Due: ${new Date(item.due_date).toLocaleString()} | Priority Score: ${item.priority_score.toFixed(1)}` 
-                          : `Untimed (Staleness Queue) | Priority Score: ${item.priority_score.toFixed(1)}`
+                          ? `Due: ${new Date(item.due_date).toLocaleString()}` 
+                          : `Untimed (Staleness Queue)`
                       }
                       primaryTypographyProps={{ 
                         sx: { 
