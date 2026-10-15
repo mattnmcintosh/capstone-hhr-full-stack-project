@@ -1,273 +1,263 @@
-import React, { useState, useEffect } from 'react';
-import { Typography, Paper, Box, List, ListItem, ListItemText, ListItemIcon, Checkbox, TextField, Button, IconButton, Chip, Divider } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { 
+  Typography, Paper, Box, TextField, Button, Checkbox,  IconButton, List, ListItem, ListItemText, Divider, Chip, Alert} from '@mui/material';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import SaveIcon from '@mui/icons-material/Save';
-import CancelIcon from '@mui/icons-material/Cancel';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { apiFetch } from '../utils/api';
 
 export default function Checklist() {
   const [items, setItems] = useState([]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDueDate, setNewDueDate] = useState('');
-  const [editingItemId, setEditingItemId] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDueDate, setEditDueDate] = useState('');
+  const [title, setTitle] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [filter, setFilter] = useState('all');
 
-  const sortItemsByPriority = (itemsArray) => {
+  const sortItems = (itemsArray) => {
     return [...itemsArray].sort((a, b) => b.priority_score - a.priority_score);
   };
 
   // READ: Fetch items on component mount
   useEffect(() => {
     apiFetch('/items')
-      .then((data) => setItems(sortItemsByPriority(data)))
+      .then((data) => setItems(sortItems(data)))
       .catch((err) => console.error("Error fetching items:", err));
   }, []);
 
   // CREATE: Submit new item form
-  const handleCreate = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!title.trim()) return;
+
+    const payload = {
+      title,
+      due_date: dueDate ? new Date(dueDate).toISOString() : null,
+    };
 
     try {
-      const newItem = await apiFetch('/items', {
-        method: 'POST',
-        body: JSON.stringify({ 
-          title: newTitle, 
-          due_date: newDueDate ? new Date(newDueDate).toISOString() : null 
-        }),
-      });
+      if (editingId) {
+        // UPDATE (PATCH)
+        const updated = await apiFetch(`/items/${editingId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        setItems((prev) => sortItems(prev.map(i => i.id === editingId ? updated : i)));
+        setEditingId(null);
+      } else {
+        // CREATE (POST)
+        const newItem = await apiFetch('/items', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        setItems((prev) => sortItems([...prev, newItem]));
+      }
 
-      setItems((prev) => sortItemsByPriority([...prev, newItem]));
-      setNewTitle('');
-      setNewDueDate('');
+      setTitle('');
+      setDueDate('');
     } catch (err) {
-      console.error("Failed to create item:", err);
+      console.error("Failed to save item:", err);
     }
   };
 
   // UPDATE: Toggle completion status (PATCH)
-  const handleToggleComplete = async (itemId, currentStatus) => {
+  const handleToggleComplete = async (item) => {
     try {
-      const updated = await apiFetch(`/items/${itemId}`, {
+      const updated = await apiFetch(`/items/${item.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ is_completed: !currentStatus }),
+        body: JSON.stringify({ is_completed: !item.is_completed }),
       });
-
-      setItems((prev) => 
-        sortItemsByPriority(prev.map(item => item.id === itemId ? updated : item))
-      );
+      setItems((prev) => sortItems(prev.map(i => i.id === item.id ? updated : i)));
     } catch (err) {
-      console.error("Failed to update item status:", err);
+      console.error("Failed to update status:", err);
     }
   };
 
   // START EDITING: Populate inline form fields
   const handleStartEdit = (item) => {
-    setEditingItemId(item.id);
-    setEditTitle(item.title);
-    setEditDueDate(item.due_date ? item.due_date.slice(0, 16) : '');
+    setEditingId(item.id);
+    setTitle(item.title);
+    setDueDate(item.due_date ? item.due_date.slice(0, 16) : '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // CANCEL EDITING
   const handleCancelEdit = () => {
-    setEditingItemId(null);
-    setEditTitle('');
-    setEditDueDate('');
-  };
-
-  // SAVE EDIT: Submit updated title and/or due date (PATCH)
-  const handleSaveEdit = async (itemId) => {
-    if (!editTitle.trim()) return;
-
-    try {
-      const updated = await apiFetch(`/items/${itemId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          title: editTitle,
-          due_date: editDueDate ? new Date(editDueDate).toISOString() : null
-        }),
-      });
-
-      setItems((prev) => 
-        sortItemsByPriority(prev.map(item => item.id === itemId ? updated : item))
-      );
-      handleCancelEdit();
-    } catch (err) {
-      console.error("Failed to update item details:", err);
-    }
+    setEditingId(null);
+    setTitle('');
+    setDueDate('');
   };
 
   // DELETE: Remove item
-  const handleDelete = async (itemId) => {
+  const handleDelete = async (id) => {
     try {
-      await apiFetch(`/items/${itemId}`, { method: 'DELETE' });
-      setItems((prev) => prev.filter(item => item.id !== itemId));
-      if (editingItemId === itemId) handleCancelEdit();
+      await apiFetch(`/items/${id}`, { method: 'DELETE' });
+      setItems((prev) => prev.filter(i => i.id !== id));
+      if (editingId === id) handleCancelEdit();
     } catch (err) {
       console.error("Failed to delete item:", err);
     }
   };
 
+  // FILTER LOGIC
+  const filteredItems = items.filter(item => {
+    if (filter === 'pending') return !item.is_completed;
+    if (filter === 'completed') return item.is_completed;
+    if (filter === 'urgent') return !item.is_completed && item.priority_score > 50;
+    return true; // 'all'
+  });
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <PlaylistAddCheckIcon sx={{ mr: 1.5, color: '#e74c3c', fontSize: 32 }} />
+        <PlaylistAddCheckIcon sx={{ mr: 1.5, color: '#2c3e50', fontSize: 32 }} />
         <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-          Queue
+          The Queue
         </Typography>
       </Box>
 
-      {/* Creation Form */}
-      <Paper elevation={2} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom>Add New Task</Typography>
-        <Box component="form" onSubmit={handleCreate} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      {/* Create / Edit Form Card */}
+      <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          {editingId ? 'Edit Item' : 'Add New'}
+        </Typography>
+        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField 
-            label="Task Title" 
-            variant="outlined" 
+            label="What are you working on?" 
             size="small" 
-            sx={{ flexGrow: 2 }}
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
           />
-          <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 'medium', color: 'text.secondary' }}>
-                Due Date (Optional)
-          </Typography>
-          <TextField 
-            type="datetime-local" 
-            size="small" 
-            sx={{ flexGrow: 1 }}
-            value={newDueDate}
-            onChange={(e) => setNewDueDate(e.target.value)}
-          />
-          <Button variant="contained" type="submit" sx={{ bgcolor: '#2c3e50' }}>Add to Queue</Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 'medium', color: 'text.secondary' }}>
+              Deadline (Optional - increases urgency score)
+            </Typography>
+            <TextField 
+              type="datetime-local" 
+              size="small" 
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="contained" type="submit" sx={{ bgcolor: editingId ? '#3498db' : '#e74c3c' }}>
+              {editingId ? 'Update Item' : 'Enqueue'}
+            </Button>
+            {editingId && (
+              <Button variant="outlined" color="inherit" onClick={handleCancelEdit}>
+                Cancel
+              </Button>
+            )}
+          </Box>
         </Box>
       </Paper>
 
-      {/* Item Display List */}
+      {/* Queue Display & Filter Chips Card */}
       <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-          Active Priority Queue ({items.length} items)
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+            Active Queue ({filteredItems.length})
+          </Typography>
+
+          {/* Quick-Filter Toolbar Chips */}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Chip 
+              label={`All (${items.length})`} 
+              onClick={() => setFilter('all')} 
+              color={filter === 'all' ? 'primary' : 'default'} 
+              variant={filter === 'all' ? 'filled' : 'outlined'}
+              size="small"
+            />
+            <Chip 
+              label={`Pending (${items.filter(i => !i.is_completed).length})`} 
+              onClick={() => setFilter('pending')} 
+              color={filter === 'pending' ? 'primary' : 'default'} 
+              variant={filter === 'pending' ? 'filled' : 'outlined'}
+              size="small"
+            />
+            <Chip 
+              label={`Completed (${items.filter(i => i.is_completed).length})`} 
+              onClick={() => setFilter('completed')} 
+              color={filter === 'completed' ? 'completed' : 'default'} 
+              variant={filter === 'completed' ? 'filled' : 'outlined'}
+              size="small"
+            />
+            <Chip 
+              label="High Priority ⚡" 
+              onClick={() => setFilter('urgent')} 
+              color={filter === 'urgent' ? 'error' : 'default'} 
+              variant={filter === 'urgent' ? 'filled' : 'outlined'}
+              size="small"
+            />
+          </Box>
+        </Box>
         <Divider sx={{ mb: 2 }} />
 
-        <List disablePadding>
-          {items.map((item) => {
-            const isEditing = editingItemId === item.id;
-            const isUrgent = item.due_date !== null;
+        {filteredItems.length === 0 ? (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            No items found under this filter.
+          </Alert>
+        ) : (
+          <List disablePadding>
+            {filteredItems.map((item) => {
+              // Color indicator based on priority score intensity
+              let borderColor = '#3498db';
+              if (!item.is_completed) {
+                if (item.priority_score > 50) borderColor = '#e74c3c'; // Red (High)
+                else if (item.priority_score > 20) borderColor = '#f39c12'; // Orange (Med)
+              } else {
+                borderColor = '#2ecc71'; // Green (Completed)
+              }
 
-            return (
-              <ListItem 
-                key={item.id} 
-                sx={{ 
-                  bgcolor: isEditing ? '#e3f2fd' : '#fafafa', 
-                  mb: 1.5, 
-                  borderRadius: 1,
-                  borderLeft: isUrgent ? '5px solid #e74c3c' : '5px solid #3498db',
-                  flexDirection: isEditing ? 'column' : 'row',
-                  alignItems: isEditing ? 'stretch' : 'center',
-                  p: isEditing ? 2 : 2
-                }}
-                secondaryAction={
-                  !isEditing && (
+              return (
+                <ListItem 
+                  key={item.id}
+                  sx={{ 
+                    bgcolor: editingId === item.id ? '#e3f2fd' : '#fafafa', 
+                    mb: 1.5, 
+                    borderRadius: 1, 
+                    borderLeft: `5px solid ${borderColor}`,
+                    opacity: item.is_completed ? 0.7 : 1,
+                  }}
+                  secondaryAction={
                     <Box>
                       <IconButton edge="end" onClick={() => handleStartEdit(item)} sx={{ mr: 1 }}>
-                        <EditIcon color="primary" />
+                        <EditIcon color="primary" fontSize="small" />
                       </IconButton>
                       <IconButton edge="end" onClick={() => handleDelete(item.id)}>
-                        <DeleteIcon color="error" />
+                        <DeleteIcon color="error" fontSize="small" />
                       </IconButton>
                     </Box>
-                  )
-                }
-              >
-                {isEditing ? (
-                  /* Inline Edit Form Layout */
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', pr: 4 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Edit Task</Typography>
-                    <TextField 
-                      label="Task Title"
-                      size="small"
-                      fullWidth
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                    />
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 'medium', color: 'text.secondary' }}>
-                        Due Date
-                      </Typography>
-                      <TextField 
-                        type="datetime-local" 
-                        size="small" 
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                      <Button 
-                        variant="contained" 
-                        size="small" 
-                        startIcon={<SaveIcon />}
-                        onClick={() => handleSaveEdit(item.id)}
-                        sx={{ bgcolor: '#2c3e50' }}
-                      >
-                        Save
-                      </Button>
-                      <Button 
-                        variant="outlined" 
-                        size="small" 
-                        color="inherit" 
-                        startIcon={<CancelIcon />}
-                        onClick={handleCancelEdit}
-                      >
-                        Cancel
-                      </Button>
-                    </Box>
-                  </Box>
-                ) : (
-                  /* Normal Display Layout */
-                  <>
-                    <ListItemIcon>
-                      <Checkbox 
-                        edge="start" 
-                        checked={item.is_completed} 
-                        onChange={() => handleToggleComplete(item.id, item.is_completed)}
-                      />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={item.title} 
-                      secondary={
-                        item.due_date 
-                          ? `Due: ${new Date(item.due_date).toLocaleString()}` 
-                          : `Untimed (Staleness Queue)`
-                      }
-                      primaryTypographyProps={{ 
-                        sx: { 
-                          fontWeight: 'medium',
-                          textDecoration: item.is_completed ? 'line-through' : 'none',
-                          color: item.is_completed ? 'text.disabled' : 'text.primary'
-                        } 
-                      }}
-                    />
-                    {isUrgent && (
-                      <Chip 
-                        icon={<WarningAmberIcon />} 
-                        label="Countdown Active" 
-                        size="small" 
-                        color="error" 
-                        variant="outlined" 
-                        sx={{ mr: 10 }}
-                      />
-                    )}
-                  </>
-                )}
-              </ListItem>
-            );
-          })}
-        </List>
+                  }
+                >
+                  <Checkbox 
+                    checked={item.is_completed}
+                    onChange={() => handleToggleComplete(item)}
+                    color="success"
+                  />
+                  <ListItemText 
+                    primary={item.title}
+                    secondary={
+                      <Box component="span" sx={{ display: 'flex', gap: 2, alignItems: 'center', mt: 0.5 }}>
+                        {item.due_date && (
+                          <Typography variant="caption" color="text.secondary">
+                            Due: {new Date(item.due_date).toLocaleString()}
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                    primaryTypographyProps={{ 
+                      sx: { 
+                        fontWeight: 'medium', 
+                        textDecoration: item.is_completed ? 'line-through' : 'none' 
+                      } 
+                    }}
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
+        )}
       </Paper>
     </Box>
   );

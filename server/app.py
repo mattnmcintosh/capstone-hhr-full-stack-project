@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from icalendar import Calendar, Event as ICalEvent
@@ -6,6 +6,7 @@ from config import Config
 from models import db, User, ChecklistItem, Event
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, decode_token
+from sqlalchemy import func
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -196,6 +197,56 @@ def login():
         return jsonify(access_token=access_token, user=user.to_dict()), 200
 
     return jsonify({"error": "Invalid username or password"}), 401
+
+@app.route('/api/analytics', methods=['GET'])
+@jwt_required()
+def get_analytics():
+    current_user_id = get_jwt_identity()
+    
+    # Fetch all items for the logged-in user
+    items = ChecklistItem.query.filter_by(user_id=current_user_id).all()
+    
+    total_items = len(items)
+    completed_items = [i for i in items if i.is_completed]
+    pending_items = [i for i in items if not i.is_completed]
+    
+    # 1. Completion Rate Percentage
+    completion_rate = round((len(completed_items) / total_items * 100) if total_items > 0 else 0, 1)
+    
+    # 2. Average Staleness (Days between creation and completion for finished tasks)
+    lifespans = []
+    for item in completed_items:
+        if item.created_at:
+            # If you don't have a completed_at timestamp column yet, 
+            # you can approximate with updated_at or track a completed_at field.
+            # Assuming item.created_at is timezone-aware or naive:
+            delta = datetime.utcnow() - item.created_at.replace(tzinfo=None)
+            lifespans.append(delta.days)
+    
+    avg_staleness_days = round(sum(lifespans) / len(lifespans), 1) if lifespans else 0
+
+    # 3. Daily Completion Breakdown (Last 7 Days for a bar/line chart)
+    daily_stats = {}
+    for i in range(6, -1, -1):
+        day_str = (datetime.utcnow() - timedelta(days=i)).strftime('%Y-%m-%d')
+        daily_stats[day_str] = 0
+
+    for item in completed_items:
+        if item.created_at:
+            day_str = item.created_at.strftime('%Y-%m-%d')
+            if day_str in daily_stats:
+                daily_stats[day_str] += 1
+
+    chart_data = [{"date": date, "completed": count} for date, count in daily_stats.items()]
+
+    return jsonify({
+        "total_items": total_items,
+        "completed_count": len(completed_items),
+        "pending_count": len(pending_items),
+        "completion_rate": completion_rate,
+        "avg_staleness_days": avg_staleness_days,
+        "chart_data": chart_data
+    }), 200
 
 if __name__ == '__main__':
     app.run(port=5555, debug=app.config["FLASK_DEBUG"])

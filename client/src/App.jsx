@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { CssBaseline, ThemeProvider, createTheme, Container } from '@mui/material';
 
 import Layout from './components/Layout';
@@ -8,6 +8,7 @@ import Home from './views/Home';
 import Checklist from './views/Checklist';
 import Calendar from './views/Calendar';
 import NotFound from './views/NotFound';
+import Analytics from './views/Analytics';
 
 const theme = createTheme({
   palette: {
@@ -52,6 +53,7 @@ export default function App() {
               <Route index element={<Home currentUser={currentUser} />} />
               <Route path="checklist" element={<Checklist />} />
               <Route path="calendar" element={<Calendar />} />
+              <Route path="analytics" element={<Analytics />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           )}
