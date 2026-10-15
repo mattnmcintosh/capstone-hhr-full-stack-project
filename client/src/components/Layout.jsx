@@ -9,6 +9,16 @@ export default function Layout({ currentUser, onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  if (!currentUser) {
+    return (
+      <Box sx={{ mt: 10, textAlign: 'center' }}>
+        <Typography variant="h6" color="text.secondary">
+          Verifying session...
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar position="static" elevation={1}>

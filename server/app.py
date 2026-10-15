@@ -24,9 +24,24 @@ with app.app_context():
 @jwt_required()
 def get_items():
     current_user_id = get_jwt_identity()
-    items = ChecklistItem.query.filter_by(user_id=current_user_id).all()
-    sorted_items = sorted(items, key=lambda x: x.calculate_priority_score(), reverse=True)
-    return jsonify([item.to_dict() for item in sorted_items]), 200
+    
+    # Get query parameters with defaults (page 1, 10 items per page)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
+    # Paginate query for the logged-in user
+    pagination = ChecklistItem.query.filter_by(user_id=current_user_id)\
+        .order_by(ChecklistItem.created_at.desc())\
+        .paginate(page=page, per_page=per_page, error_out=False)
+        
+    items = pagination.items
+    
+    return jsonify({
+        "items": [item.to_dict() for item in items],
+        "total": pagination.total,
+        "pages": pagination.pages,
+        "current_page": page
+    }), 200
 
 @app.route('/api/items', methods=['POST'])
 @jwt_required()

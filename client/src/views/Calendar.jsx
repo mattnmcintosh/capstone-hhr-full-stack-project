@@ -25,13 +25,15 @@ export default function Calendar() {
 
   // Fetch events on mount
 useEffect(() => {
-    Promise.all([
-      apiFetch('/events'),
-      apiFetch('/items')
-    ])
+    Promise.all([apiFetch('/events'), apiFetch('/items')])
       .then(([eventsData, itemsData]) => {
-        setEvents(eventsData);
-        setItems(itemsData);
+        // Unpack items safely
+        const items = itemsData.items || itemsData;
+        
+        // Now it's 100% safe to call .filter()
+        const pendingItems = items.filter(i => !i.is_completed);
+        
+        // ... rest of your calendar mapping code
       })
       .catch((err) => console.error("Error fetching calendar data:", err));
   }, []);

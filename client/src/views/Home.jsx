@@ -13,27 +13,29 @@ export default function Home({ currentUser }) {
   // Fetch items on mount to evaluate status
   useEffect(() => {
     apiFetch('/items')
-      .then((items) => {
+      .then((response) => {
+        // Unpack items whether it's paginated or a raw array
+        const items = response.items || response; 
         const pending = items.filter(i => !i.is_completed);
         const highPriority = pending.filter(i => i.priority_score > 50);
 
         if (pending.length === 0) {
           setStatusInfo({ 
-            label: 'Empty', 
+            label: 'Immaculate / Overachiever', 
             color: 'success', 
             message: 'Your queue is completely empty.' 
           });
         } else if (highPriority.length > 0) {
           setStatusInfo({ 
-            label: 'Critical', 
+            label: 'Critical Procrastination', 
             color: 'error', 
-            message: `You have ${highPriority.length} high-priority items prioritizing for attention.` 
+            message: `You have ${highPriority.length} high-priority items looking for attention.` 
           });
         } else {
           setStatusInfo({ 
-            label: 'Moderate Warning', 
+            label: 'Moderate Avoidance', 
             color: 'warning', 
-            message: `You are maintaining ${pending.length} pending events/checklist items. Keep an eye on your staleness velocity.` 
+            message: `You are maintaining ${pending.length} pending. Keep an eye on your staleness velocity.` 
           });
         }
       })
