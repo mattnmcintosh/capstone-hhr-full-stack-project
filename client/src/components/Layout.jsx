@@ -1,4 +1,3 @@
-import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { AppBar, Toolbar, Typography, Button, Container, Box } from '@mui/material';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
@@ -43,6 +42,13 @@ export default function Layout({ currentUser, onLogout }) {
                 sx={{ bgcolor: location.pathname === '/calendar' ? 'rgba(255,255,255,0.1)' : 'transparent' }}
               >
                 Calendar
+              </Button>
+              <Button 
+                color="inherit" 
+                onClick={() => navigate('/analytics')}
+                sx={{ bgcolor: location.pathname === '/analytics' ? 'rgba(255,255,255,0.1)' : 'transparent' }}
+              >
+                Analytics
               </Button>
             </Box>
           )}
