@@ -20,9 +20,10 @@ const theme = createTheme({
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const user = localStorage.getItem('user');
+  const token = localStorage.getItem('jwt_token');
+  return (user && token) ? JSON.parse(user) : null;
+});
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);

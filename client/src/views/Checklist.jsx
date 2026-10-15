@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { 
-  Typography, Paper, Box, TextField, Button, Checkbox,  IconButton, List, ListItem, ListItemText, Divider, Chip, Alert} from '@mui/material';
+import {Typography, Paper, Box, TextField, Button, Checkbox, IconButton, List, ListItem, ListItemText, Divider, Chip, Alert} from '@mui/material';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -18,11 +17,25 @@ export default function Checklist() {
   };
 
   // READ: Fetch items on component mount
-  useEffect(() => {
-    apiFetch('/items')
-      .then((data) => setItems(sortItems(data)))
-      .catch((err) => console.error("Error fetching items:", err));
-  }, []);
+ useEffect(() => {
+  apiFetch('/items?page=1&per_page=20')
+    .then((data) => {
+      // If your backend returns { items: [...] }, handle it here:
+      const itemsList = data.items || data; 
+      setItems(sortItems(itemsList));
+    })
+    .catch((err) => console.error("Error fetching items:", err));
+}, []);
+
+  if (!items) {
+    return (
+      <Box sx={{ mt: 8, textAlign: 'center' }}>
+        <Typography variant="h6" color="text.secondary">
+          Loading Queue...
+        </Typography>
+      </Box>
+    );
+  }
 
   // CREATE: Submit new item form
   const handleSubmit = async (e) => {
@@ -103,7 +116,7 @@ export default function Checklist() {
     if (filter === 'pending') return !item.is_completed;
     if (filter === 'completed') return item.is_completed;
     if (filter === 'urgent') return !item.is_completed && item.priority_score > 50;
-    return true; // 'all'
+    return true;
   });
 
   return (
@@ -178,7 +191,7 @@ export default function Checklist() {
             <Chip 
               label={`Completed (${items.filter(i => i.is_completed).length})`} 
               onClick={() => setFilter('completed')} 
-              color={filter === 'completed' ? 'completed' : 'default'} 
+              color={filter === 'completed' ? 'success' : 'default'} 
               variant={filter === 'completed' ? 'filled' : 'outlined'}
               size="small"
             />
@@ -200,13 +213,12 @@ export default function Checklist() {
         ) : (
           <List disablePadding>
             {filteredItems.map((item) => {
-              // Color indicator based on priority score intensity
               let borderColor = '#3498db';
               if (!item.is_completed) {
-                if (item.priority_score > 50) borderColor = '#e74c3c'; // Red (High)
-                else if (item.priority_score > 20) borderColor = '#f39c12'; // Orange (Med)
+                if (item.priority_score > 50) borderColor = '#e74c3c'; 
+                else if (item.priority_score > 20) borderColor = '#f39c12'; 
               } else {
-                borderColor = '#2ecc71'; // Green (Completed)
+                borderColor = '#2ecc71'; 
               }
 
               return (
