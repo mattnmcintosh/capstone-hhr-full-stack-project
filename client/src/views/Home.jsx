@@ -27,15 +27,15 @@ export default function Home({ currentUser }) {
           });
         } else if (highPriority.length > 0) {
           setStatusInfo({ 
-            label: 'Critical Procrastination', 
+            label: 'Critical', 
             color: 'error', 
             message: `You have ${highPriority.length} high-priority items looking for attention.` 
           });
         } else {
           setStatusInfo({ 
-            label: 'Moderate Avoidance', 
+            label: 'Moderate', 
             color: 'warning', 
-            message: `You are maintaining ${pending.length} pending. Keep an eye on your staleness velocity.` 
+            message: `You are maintaining ${pending.length} pending. Keep an eye on your staleness.` 
           });
         }
       })
