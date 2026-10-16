@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from icalendar import Calendar, Event as ICalEvent
@@ -262,6 +262,92 @@ def get_analytics():
         "avg_staleness_days": avg_staleness_days,
         "chart_data": chart_data
     }), 200
+
+@app.route('/api/items/seed', methods=['POST', 'OPTIONS'])
+@jwt_required()
+def seed_items():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    current_user_id = get_jwt_identity()
+    now = datetime.now(timezone.utc)
+    
+    sample_data = [
+        {"title": "Fix the mysterious 404 router redirect bug", "due_date": now - timedelta(days=2)},
+        {"title": "Refactor legacy spaghetti code before demo day", "due_date": now + timedelta(days=1)},
+        {"title": "Buy coffee beans so human function doesn't cease", "due_date": now + timedelta(days=3)},
+        {"title": "Schedule dentist appointment I've avoided for 6 months", "due_date": now + timedelta(days=7)},
+        {"title": "Prepare slide deck for Saturday's capstone review", "due_date": now + timedelta(days=2)},
+        {"title": "Clean out the keyboard crumbs", "due_date": None},
+        {"title": "Organize VS Code extension clutter", "due_date": None},
+        {"title": "Read chapter on clean architecture", "due_date": None},
+        {"title": "Back up database dump to secure drive", "due_date": None},
+        {"title": "Stare blankly at the wall for 10 minutes to reset brain", "due_date": None}
+    ]
+    
+    try:
+        # Fetch existing titles for this user to check for duplicates
+        existing_items = ChecklistItem.query.filter_by(user_id=current_user_id).all()
+        existing_titles = {item.title for item in existing_items}
+        
+        created_items = []
+        for data in sample_data:
+            # Only add if the title doesn't already exist for this user
+            if data["title"] not in existing_titles:
+                item = ChecklistItem(
+                    title=data["title"],
+                    due_date=data["due_date"],
+                    user_id=current_user_id,
+                    is_completed=False
+                )
+                db.session.add(item)
+                created_items.append(item)
+                
+        if created_items:
+            db.session.commit()
+            
+        # Return all items (or just newly created ones depending on frontend preference)
+        # Returning newly created ones so frontend state update works cleanly:
+        return jsonify([item.to_dict() for item in created_items]), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/items/seed', methods=['DELETE'])
+@jwt_required()
+def clear_samples():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    current_user_id = get_jwt_identity()
+    
+    sample_titles = [
+        "Fix the mysterious 404 router redirect bug",
+        "Refactor legacy spaghetti code before demo day",
+        "Buy coffee beans so human function doesn't cease",
+        "Schedule dentist appointment I've avoided for 6 months",
+        "Prepare slide deck for Saturday's capstone review",
+        "Clean out the keyboard crumbs",
+        "Organize VS Code extension clutter",
+        "Read chapter on clean architecture",
+        "Back up database dump to secure drive",
+        "Stare blankly at the wall for 10 minutes to reset brain"
+    ]
+    
+    try:
+        # Delete only items belonging to this user that match the sample titles
+        ChecklistItem.query.filter(
+            ChecklistItem.user_id == current_user_id,
+            ChecklistItem.title.in_(sample_titles)
+        ).delete(synchronize_session=False)
+        
+        db.session.commit()
+        return jsonify({"message": "Sample items cleared successfully"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(port=5555, debug=app.config["FLASK_DEBUG"])
