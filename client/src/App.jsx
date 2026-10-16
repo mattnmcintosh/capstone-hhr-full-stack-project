@@ -23,7 +23,7 @@ export default function App() {
   const user = localStorage.getItem('user');
   const token = localStorage.getItem('jwt_token');
   return (user && token) ? JSON.parse(user) : null;
-}); 
+});
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
