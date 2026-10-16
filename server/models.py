@@ -62,12 +62,11 @@ class ChecklistItem(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "user_id": self.user_id,
             "title": self.title,
             "is_completed": self.is_completed,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
             "due_date": self.due_date.isoformat() if self.due_date else None,
-            "priority_score": self.calculate_priority_score()
+            "user_id": self.user_id,
+            "priority_score": self.priority_score if hasattr(self, 'priority_score') else 0
         }
 
 class Event(db.Model):
