@@ -150,12 +150,6 @@ export default function Checklist() {
     }
   };
 
-
-  console.log("RAW ITEMS STATE:", items);
-  console.log("FILTERED ITEMS:", filteredItems);
-  console.log("ACTIVE FILTER:", filter);
-
-
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
