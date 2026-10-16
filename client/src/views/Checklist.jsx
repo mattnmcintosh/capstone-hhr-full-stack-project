@@ -12,30 +12,25 @@ export default function Checklist() {
   const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState('all');
 
-  const sortItems = (itemsArray) => {
-    return [...itemsArray].sort((a, b) => b.priority_score - a.priority_score);
+ const sortItems = (itemsArray) => {
+    return [...itemsArray].sort((a, b) => {
+      const scoreA = a.priority_score || 0;
+      const scoreB = b.priority_score || 0;
+      return scoreB - scoreA;
+    });
   };
+  
 
   // READ: Fetch items on component mount
- useEffect(() => {
-  apiFetch('/items?page=1&per_page=20')
-    .then((data) => {
-      // If your backend returns { items: [...] }, handle it here:
-      const itemsList = data.items || data; 
-      setItems(sortItems(itemsList));
-    })
-    .catch((err) => console.error("Error fetching items:", err));
-}, []);
-
-  if (!items) {
-    return (
-      <Box sx={{ mt: 8, textAlign: 'center' }}>
-        <Typography variant="h6" color="text.secondary">
-          Loading Queue...
-        </Typography>
-      </Box>
-    );
-  }
+  useEffect(() => {
+    apiFetch('/items?page=1&per_page=50')
+      .then((data) => {
+        // Ensure we explicitly extract the array from the paginated response
+        const itemsArray = Array.isArray(data) ? data : (data.items || []);
+        setItems(sortItems(itemsArray));
+      })
+      .catch((err) => console.error("Error fetching checklist items:", err));
+  }, []);
 
   // CREATE: Submit new item form
   const handleSubmit = async (e) => {
@@ -112,12 +107,54 @@ export default function Checklist() {
   };
 
   // FILTER LOGIC
-  const filteredItems = items.filter(item => {
-    if (filter === 'pending') return !item.is_completed;
+  const filteredItems = Array.isArray(items) ? items.filter(item => {
     if (filter === 'completed') return item.is_completed;
-    if (filter === 'urgent') return !item.is_completed && item.priority_score > 50;
-    return true;
-  });
+    if (filter === 'pending') return !item.is_completed; // Fixed from 'active' to 'pending'
+    if (filter === 'urgent') return (item.priority_score || 0) > 50;
+    return true; // 'all'
+  }) : [];
+
+
+  // LOAD SAMPLES: Quick seed action for live demos
+  const handleLoadSamples = async () => {
+    try {
+      const newItems = await apiFetch('/items/seed', { method: 'POST' });
+      // Ensure newItems is an array before spreading
+      const incomingArray = Array.isArray(newItems) ? newItems : (newItems.items || []);
+      setItems((prev) => sortItems([...prev, ...incomingArray]));
+    } catch (err) {
+      console.error("Failed to load sample items:", err);
+    }
+  };
+
+  // CLEAR SAMPLES: Remove only the demo seed items
+  const handleClearSamples = async () => {
+    try {
+      await apiFetch('/items/seed', { method: 'DELETE' });
+      // Re-fetch items or filter them out of state locally
+      const sampleTitles = [
+        "Fix the mysterious 404 router redirect bug",
+        "Refactor legacy spaghetti code before demo day",
+        "Buy coffee beans so human function doesn't cease",
+        "Schedule dentist appointment I've avoided for 6 months",
+        "Prepare slide deck for Saturday's capstone review",
+        "Clean out the keyboard crumbs",
+        "Organize VS Code extension clutter",
+        "Read chapter on clean architecture",
+        "Back up database dump to secure drive",
+        "Stare blankly at the wall for 10 minutes to reset brain"
+      ];
+      setItems((prev) => prev.filter(i => !sampleTitles.includes(i.title)));
+    } catch (err) {
+      console.error("Failed to clear sample items:", err);
+    }
+  };
+
+
+  console.log("RAW ITEMS STATE:", items);
+  console.log("FILTERED ITEMS:", filteredItems);
+  console.log("ACTIVE FILTER:", filter);
+
 
   return (
     <Box>
@@ -152,7 +189,7 @@ export default function Checklist() {
               onChange={(e) => setDueDate(e.target.value)}
             />
           </Box>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button variant="contained" type="submit" sx={{ bgcolor: editingId ? '#3498db' : '#e74c3c' }}>
               {editingId ? 'Update Item' : 'Enqueue'}
             </Button>
@@ -161,6 +198,13 @@ export default function Checklist() {
                 Cancel
               </Button>
             )}
+            <Button variant="outlined" color="secondary" onClick={handleLoadSamples}>
+              Load Samples 🚀
+            </Button>
+            {/* 🗑️ Clear Samples Button */}
+            <Button variant="outlined" color="error" onClick={handleClearSamples}>
+              Clear Samples 🧹
+            </Button>
           </Box>
         </Box>
       </Paper>
@@ -223,49 +267,42 @@ export default function Checklist() {
 
               return (
                 <ListItem 
-                  key={item.id}
-                  sx={{ 
-                    bgcolor: editingId === item.id ? '#e3f2fd' : '#fafafa', 
-                    mb: 1.5, 
-                    borderRadius: 1, 
-                    borderLeft: `5px solid ${borderColor}`,
-                    opacity: item.is_completed ? 0.7 : 1,
-                  }}
-                  secondaryAction={
-                    <Box>
-                      <IconButton edge="end" onClick={() => handleStartEdit(item)} sx={{ mr: 1 }}>
-                        <EditIcon color="primary" fontSize="small" />
-                      </IconButton>
-                      <IconButton edge="end" onClick={() => handleDelete(item.id)}>
-                        <DeleteIcon color="error" fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  }
-                >
-                  <Checkbox 
-                    checked={item.is_completed}
-                    onChange={() => handleToggleComplete(item)}
-                    color="success"
-                  />
-                  <ListItemText 
-                    primary={item.title}
-                    secondary={
-                      <Box component="span" sx={{ display: 'flex', gap: 2, alignItems: 'center', mt: 0.5 }}>
-                        {item.due_date && (
-                          <Typography variant="caption" color="text.secondary">
-                            Due: {new Date(item.due_date).toLocaleString()}
-                          </Typography>
-                        )}
+                    key={item.id}
+                    sx={{ 
+                      bgcolor: '#ffffff', 
+                      color: '#000000',   
+                      border: '2px solid #3498db', 
+                      mb: 1.5, 
+                      borderRadius: 2, 
+                      boxShadow: 1,
+                      opacity: item.is_completed ? 0.7 : 1,
+                    }}
+                    secondaryAction={
+                      <Box>
+                        <IconButton edge="end" onClick={() => handleStartEdit(item)} sx={{ mr: 1 }}>
+                          <EditIcon color="primary" fontSize="small" />
+                        </IconButton>
+                        <IconButton edge="end" onClick={() => handleDelete(item.id)}>
+                          <DeleteIcon color="error" fontSize="small" />
+                        </IconButton>
                       </Box>
                     }
-                    primaryTypographyProps={{ 
-                      sx: { 
-                        fontWeight: 'medium', 
-                        textDecoration: item.is_completed ? 'line-through' : 'none' 
-                      } 
-                    }}
-                  />
-                </ListItem>
+                  >
+                    <Checkbox 
+                      checked={item.is_completed}
+                      onChange={() => handleToggleComplete(item)}
+                      color="success"
+                    />
+                    <ListItemText 
+                      primary={item.title}
+                      secondary={
+                        item.due_date ? `Due: ${new Date(item.due_date).toLocaleString()}` : 'No deadline'
+                      }
+                      primaryTypographyProps={{ 
+                        sx: { fontWeight: 'bold', color: '#2c3e50' } 
+                      }}
+                    />
+                  </ListItem>
               );
             })}
           </List>

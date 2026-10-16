@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Typography, Paper, Box, TextField, Button, Divider, Alert, Chip, IconButton, List, ListItem, ListItemText } from '@mui/material';
+import { Typography, Paper, Box, TextField, Button, Divider, Alert, Chip, IconButton, List, ListItem, ListItemText, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
 import DownloadIcon from '@mui/icons-material/Download';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import FullCalendar from '@fullcalendar/react';
@@ -20,28 +19,24 @@ export default function Calendar() {
   const [description, setDescription] = useState('');
   const [editingEventId, setEditingEventId] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
 
   const icsUrl = `http://localhost:5555/api/calendar.ics?token=${localStorage.getItem('jwt_token')}`
 
   // Fetch events on mount
 useEffect(() => {
-    Promise.all([apiFetch('/events'), apiFetch('/items?page=1&per_page=50')])
+    Promise.all([
+      apiFetch('/events').catch(() => ({ events: [] })),
+      apiFetch('/items?page=1&per_page=100')
+    ])
       .then(([eventsData, itemsData]) => {
-        const items = itemsData.items || itemsData;
         const fetchedEvents = eventsData.events || eventsData;
+        const fetchedItems = itemsData.items || itemsData;
 
-        const itemEvents = items
-          .filter(item => item.due_date)
-          .map(item => ({
-            id: `item-${item.id}`,
-            title: `[Task] ${item.title}`,
-            start: item.due_date,
-            allDay: true,
-            color: item.is_completed ? '#2ecc71' : '#e74c3c'
-          }));
-
-        // Use whatever your state setter is named (e.g., setEvents)
-        setEvents([...fetchedEvents, ...itemEvents]);
+        // Save fetched items to state so formattedDeadlines can use them!
+        setItems(Array.isArray(fetchedItems) ? fetchedItems : []);
+        setEvents(Array.isArray(fetchedEvents) ? fetchedEvents : []);
       })
       .catch((err) => console.error("Error fetching calendar data:", err));
   }, []);
@@ -171,6 +166,25 @@ useEffect(() => {
 
   const allCalendarEvents = [...formattedEvents, ...formattedDeadlines];
 
+  // Handle calendar event clicks
+  const handleEventClick = (info) => {
+    const targetId = info.event.id;
+    
+    // If it's a checklist task deadline, open the detail modal instead of an alert
+    if (typeof targetId === 'string' && targetId.startsWith('task-')) {
+      const rawId = parseInt(targetId.replace('task-', ''), 10);
+      const foundItem = items.find(i => i.id === rawId);
+      if (foundItem) {
+        setSelectedTask(foundItem);
+        setTaskModalOpen(true);
+      }
+      return;
+    }
+
+    // Otherwise, handle regular custom event editing
+    handleStartEdit(info.event);
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -219,11 +233,6 @@ useEffect(() => {
       <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 2, bgcolor: '#ffffff' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Schedule & Deadlines Grid (Click any event to edit)</Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <Chip size="small" sx={{ bgcolor: '#3498db', color: '#fff' }} label="Custom Event" />
-            <Chip size="small" sx={{ bgcolor: '#e74c3c', color: '#fff' }} label="High Priority Deadline" />
-            <Chip size="small" sx={{ bgcolor: '#f39c12', color: '#fff' }} label="Pending Deadline" />
-          </Box>
         </Box>
         <Divider sx={{ mb: 3 }} />
 
@@ -237,7 +246,7 @@ useEffect(() => {
           }}
           events={allCalendarEvents}
           height="auto"
-          eventClick={(info) => handleStartEdit(info.event)} // <--- CLICK TO EDIT TRIGGER
+          eventClick={handleEventClick} // Updated click handler
           eventTimeFormat={{
             hour: '2-digit',
             minute: '2-digit',
@@ -311,6 +320,32 @@ useEffect(() => {
           </Box>
         </Box>
       </Paper>
+      {/* Task Details Popup Dialog */}
+      <Dialog open={taskModalOpen} onClose={() => setTaskModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 'bold', bgcolor: '#f8f9fa' }}>
+          📋 Checklist Task Details
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {selectedTask && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 'medium', color: '#2c3e50' }}>
+                {selectedTask.title}
+              </Typography>
+              <Divider />
+              <Box sx={{ display: 'flex', gap: 3 }}>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Due:</strong> {selectedTask.due_date ? new Date(selectedTask.due_date).toLocaleString() : 'No deadline'}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: '#f8f9fa' }}>
+          <Button variant="contained" onClick={() => setTaskModalOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
