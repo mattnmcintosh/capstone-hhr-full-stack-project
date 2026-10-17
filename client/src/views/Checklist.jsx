@@ -12,11 +12,23 @@ export default function Checklist() {
   const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState('all');
 
- const sortItems = (itemsArray) => {
+const sortItems = (itemsArray) => {
     return [...itemsArray].sort((a, b) => {
       const scoreA = a.priority_score || 0;
       const scoreB = b.priority_score || 0;
-      return scoreB - scoreA;
+      
+      if (scoreB !== scoreA) {
+        return scoreB - scoreA;
+      }
+      
+      if (a.due_date && !b.due_date) return -1;
+      if (!a.due_date && b.due_date) return 1;
+      
+      if (a.due_date && b.due_date) {
+        return new Date(a.due_date) - new Date(b.due_date);
+      }
+      
+      return 0;
     });
   };
   
@@ -99,7 +111,7 @@ export default function Checklist() {
   const handleDelete = async (id) => {
     try {
       await apiFetch(`/items/${id}`, { method: 'DELETE' });
-      setItems((prev) => prev.filter(i => i.id !== id));
+      setItems((prev) => sortItems(prev.filter(i => i.id !== id)));
       if (editingId === id) handleCancelEdit();
     } catch (err) {
       console.error("Failed to delete item:", err);
@@ -144,7 +156,7 @@ export default function Checklist() {
         "Back up database dump to secure drive",
         "Stare blankly at the wall for 10 minutes to reset brain"
       ];
-      setItems((prev) => prev.filter(i => !sampleTitles.includes(i.title)));
+      setItems((prev) => sortItems(prev.filter(i => !sampleTitles.includes(i.title))));
     } catch (err) {
       console.error("Failed to clear sample items:", err);
     }
